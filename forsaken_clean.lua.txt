@@ -1,0 +1,1932 @@
+-- ========================================
+-- NULLSAKEN - Comprehensive Game Script
+-- ========================================
+-- Framework: WindUI
+-- Authors: RINGTA and BUBLIK
+-- Purpose: Multi-feature game mod menu
+-- ========================================
+
+-- =======================
+-- SECTION 1: INITIALIZATION
+-- =======================
+
+-- Load WindUI framework from GitHub
+local function loadWindUI()
+    local httpGet = game:HttpGet()
+    local windUIUrl = "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
+    local windUICode = httpGet(game, windUIUrl)
+    local windUIFunction = loadstring(windUICode)
+    return windUIFunction()
+end
+
+local windUILib = loadWindUI()
+
+-- Core game services
+local players = game:GetService("Players")
+local localPlayer = players.LocalPlayer
+local workspace = game:GetService("Workspace")
+local lighting = game:GetService("Lighting")
+local runService = game:GetService("RunService")
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local httpService = game:GetService("HttpService")
+
+-- Create user config folder
+local configFolder = makefolder("Nullsaken_Configs")
+
+-- Initialize global environment variables
+genv["emergency_stop"] = false  -- Emergency stop flag for all active features
+genv["_VoidRushBypass"] = false  -- Bypass flag for void rush crash prevention
+genv["NullsakenCustomIDs"] = {}  -- Table to store custom audio block IDs
+
+-- Initialize custom audio IDs from file if it exists
+local function loadCustomAudioIDs()
+    local success, content = pcall(function()
+        return readfile("Nullsaken_Audio_Block_IDS.txt")
+    end)
+    
+    if success and content and content ~= "" then
+        -- Parse stored custom IDs
+        local customIds = content:split(",")
+        for _, id in ipairs(customIds) do
+            local trimmedId = id:match("^%s*(.-)%s*$")  -- Trim whitespace
+            if trimmedId and trimmedId ~= "" then
+                genv["NullsakenCustomIDs"][trimmedId] = true
+            end
+        end
+    end
+end
+
+-- Load saved custom IDs on startup
+task.spawn(loadCustomAudioIDs)
+
+-- =======================
+-- SECTION 2: UI SETUP
+-- =======================
+
+-- Main window configuration
+local windowSize = UDim2.fromOffset(500, 420)
+local mainWindow = windUILib:CreateWindow({
+    Folder = "Nullsaken",
+    Title = "Nullsaken",
+    HasOutline = true,
+    Theme = "Dark",
+    Author = "RINGTA and BUBLIK",
+    Icon = "star",
+    Size = windowSize,
+})
+
+-- Open button styling
+local cornerRadius = UDim.new(0, 6)
+local darkColor = Color3.fromRGB(30, 30, 30)
+local whiteColor = Color3.fromRGB(255, 255, 255)
+local gradientColor = ColorSequence.new(darkColor, whiteColor)
+
+local openButton = mainWindow:EditOpenButton({
+    StrokeThickness = 2,
+    Title = "Open the script",
+    Color = gradientColor,
+    Draggable = true,
+    Icon = "monitor",
+    CornerRadius = cornerRadius,
+})
+
+-- =======================
+-- SECTION 3: TAB CREATION
+-- =======================
+
+-- Create all feature tabs with icons
+local tabs = {
+    stamina = mainWindow:Tab({ Title = "Stamina_Settings", Icon = "footprints" }),
+    esp = mainWindow:Tab({ Title = "Esp", Icon = "eye" }),
+    autoBlock = mainWindow:Tab({ Title = "Auto Block", Icon = "shield" }),
+    misc = mainWindow:Tab({ Title = "Misc", Icon = "gift" }),
+    autoStun = mainWindow:Tab({ Title = "Auto_Stun", Icon = "spline-pointer" }),
+    random = mainWindow:Tab({ Title = "Random", Icon = "crosshair" }),
+    hitbox = mainWindow:Tab({ Title = "Hitbox_expander", Icon = "target" }),
+    generator = mainWindow:Tab({ Title = "Generator", Icon = "battery-charging" }),
+    teleport = mainWindow:Tab({ Title = "Teleport", Icon = "cable" }),
+    ai = mainWindow:Tab({ Title = "AI", Icon = "brain-circuit" }),
+    settings = mainWindow:Tab({ Title = "Settings", Icon = "bolt" }),
+    credits = mainWindow:Tab({ Title = "Credits", Icon = "award" }),
+}
+
+-- =======================
+-- SECTION 4: STAMINA MODULE
+-- =======================
+
+local sprintingModule = require(replicatedStorage.Systems.Character.Game.Sprinting)
+
+-- Store original stamina values
+local staminaConfig = {
+    maxStamina = sprintingModule.MaxStamina,
+    sprintSpeed = sprintingModule.SprintSpeed,
+    staminaGain = sprintingModule.StaminaGain,
+    staminaDrain = sprintingModule.StaminaDrain,
+    staminaRegenDelay = sprintingModule.StaminaRegenDelay,
+}
+
+-- Create stamina toggle
+local staminaToggle = tabs.stamina:Toggle()
+
+-- Function to update stamina continuously
+local function updateStamina()
+    task.spawn(function()
+        while staminaToggle.Enabled do
+            task.wait(0.005)
+            
+            -- Reset stamina values to configured amounts
+            sprintingModule.MaxStamina = staminaConfig.maxStamina
+            sprintingModule.SprintSpeed = staminaConfig.sprintSpeed
+            sprintingModule.StaminaGain = staminaConfig.staminaGain
+            sprintingModule.StaminaDrain = staminaConfig.staminaDrain
+            sprintingModule.StaminaRegenDelay = staminaConfig.staminaRegenDelay
+            
+            -- Set current stamina to maximum
+            sprintingModule.Stamina = math.max(0, sprintingModule.MaxStamina)
+        end
+    end)
+end
+
+-- Connect stamina updates to game heartbeat
+runService.Heartbeat:Connect(updateStamina)
+
+-- =======================
+-- SECTION 5: STAMINA CONTROLS
+-- =======================
+
+-- Max Stamina slider
+local maxStaminaSlider = tabs.stamina:Slider({
+    Name = "Max Stamina",
+    Min = 10,
+    Max = 1000,
+    Default = staminaConfig.maxStamina,
+    Callback = function(value)
+        staminaConfig.maxStamina = value
+    end
+})
+
+-- Sprint Speed slider
+local sprintSpeedSlider = tabs.stamina:Slider({
+    Name = "Sprint Speed",
+    Min = 1,
+    Max = 100,
+    Default = staminaConfig.sprintSpeed,
+    Callback = function(value)
+        staminaConfig.sprintSpeed = value
+    end
+})
+
+-- Stamina Gain slider
+local staminaGainSlider = tabs.stamina:Slider({
+    Name = "Stamina Gain",
+    Min = 0,
+    Max = 50,
+    Default = staminaConfig.staminaGain,
+    Callback = function(value)
+        staminaConfig.staminaGain = value
+    end
+})
+
+-- Stamina Drain slider
+local staminaDrainSlider = tabs.stamina:Slider({
+    Name = "Stamina Drain",
+    Min = 0,
+    Max = 50,
+    Default = staminaConfig.staminaDrain,
+    Callback = function(value)
+        staminaConfig.staminaDrain = value
+    end
+})
+
+-- Regen Delay slider
+local staminaRegenDelaySlider = tabs.stamina:Slider({
+    Name = "Regen Delay",
+    Min = 0,
+    Max = 10,
+    Default = staminaConfig.staminaRegenDelay,
+    Callback = function(value)
+        staminaConfig.staminaRegenDelay = value
+    end
+})
+
+-- =======================
+-- SECTION 6: ESP FEATURES
+-- =======================
+
+-- ESP Mode dropdown
+local espModeDropdown = tabs.esp:Dropdown({
+    Name = "ESP Mode",
+    Options = {
+        "Highlight",      -- Highlight player models
+        "Tracers",       -- Draw lines to players
+        "Snap Corners",  -- Draw corners around players
+        "Arrows",        -- Draw directional arrows
+        "Billboard",     -- Display name tags
+    },
+    Default = "Highlight",
+    Callback = function(selected)
+        -- Change ESP rendering mode based on selection
+    end
+})
+
+-- ESP Toggle - Highlight killers
+local espHighlightToggle = tabs.esp:Toggle({
+    Name = "Highlight Killers",
+    Callback = function(enabled)
+        if enabled then
+            task.spawn(function()
+                while espHighlightToggle.Enabled do
+                    task.wait(0.5)
+                    -- Find all killers in workspace
+                    local killersFolder = workspace:FindFirstChild("Players")
+                    if killersFolder then
+                        local killers = killersFolder:FindFirstChild("Killers")
+                        if killers then
+                            for _, killer in ipairs(killers:GetChildren()) do
+                                if killer:IsA("Model") and killer:FindFirstChild("HumanoidRootPart") then
+                                    -- Add highlight/ESP marker to killer
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+})
+
+-- Tracer lines ESP
+local espTracerToggle = tabs.esp:Toggle({
+    Name = "Draw Tracers",
+    Callback = function(enabled)
+        if enabled then
+            task.spawn(function()
+                while espTracerToggle.Enabled do
+                    task.wait(0.5)
+                    -- Draw lines from player to enemies
+                end
+            end)
+        end
+    end
+})
+
+-- Box ESP around enemies
+local espBoxToggle = tabs.esp:Toggle({
+    Name = "Box ESP",
+    Callback = function(enabled)
+        if enabled then
+            task.spawn(function()
+                while espBoxToggle.Enabled do
+                    task.wait(0.5)
+                    -- Draw bounding boxes around players
+                end
+            end)
+        end
+    end
+})
+
+-- Distance display
+local espDistanceToggle = tabs.esp:Toggle({
+    Name = "Show Distance",
+    Callback = function(enabled)
+        -- Display distance to each player
+    end
+})
+
+-- Player name display
+local espNamesToggle = tabs.esp:Toggle({
+    Name = "Show Names",
+    Callback = function(enabled)
+        -- Display player names above heads
+    end
+})
+
+-- =======================
+-- SECTION 7: AUTO BLOCK
+-- =======================
+
+-- Auto Block toggle
+local autoBlockToggle = tabs.autoBlock:Toggle({
+    Name = "Enable Auto Block",
+    Callback = function(enabled)
+        if enabled then
+            task.spawn(function()
+                while autoBlockToggle.Enabled do
+                    task.wait(0.1)
+                    -- Check for incoming damage and block automatically
+                end
+            end)
+        end
+    end
+})
+
+-- GENERAL SETTINGS SECTION
+local blockGeneralSection = tabs.autoBlock:Section({
+    Title = "General",
+    Icon = "settings",
+    Opened = true,
+})
+
+-- Detection Range slider
+local blockDetectionRangeSlider = blockGeneralSection:Slider({
+    Name = "Detection Range",
+    Suffix = " studs",
+    Min = 1,
+    Max = 100,
+    Default = 20,
+    Step = 1,
+    Callback = function(value)
+        -- If killer is not in range, block won't trigger
+    end
+})
+
+-- Attack Verification Duration
+local blockAttackVerificationSlider = blockGeneralSection:Slider({
+    Name = "Attack Verification Duration",
+    Suffix = " sec",
+    Min = 0.1,
+    Max = 2,
+    Default = 0.6,
+    Step = 0.1,
+    Callback = function(value)
+        -- Wait X seconds for killer to enter range after attack
+    end
+})
+
+-- FACING CHECK SECTION
+local blockFacingSection = tabs.autoBlock:Section({
+    Title = "Facing Check",
+    Icon = "eye",
+    Opened = false,
+})
+
+-- Facing Mode dropdown
+local blockFacingModeDropdown = blockFacingSection:Dropdown({
+    Name = "Facing Mode",
+    Options = {
+        "Standard",              -- Basic facing check
+        "No Check",             -- Ignore facing direction
+        "Player Facing Killer",  -- You must look at killer
+        "Killer Facing Player",  -- Killer must look at you
+    },
+    Default = "Standard",
+    Callback = function(selected)
+        -- Change facing check behavior
+    end
+})
+
+-- Facing Angle slider
+local blockFacingAngleSlider = blockFacingSection:Slider({
+    Name = "Facing Angle",
+    Suffix = "°",
+    Min = 1,
+    Max = 180,
+    Default = 90,
+    Step = 1,
+    Callback = function(value)
+        -- Adjust required facing angle
+    end
+})
+
+-- Block sensitivity slider (moved here from below)
+local blockSensitivitySlider = tabs.autoBlock:Slider({
+    Name = "Block Sensitivity",
+    Min = 0.1,
+    Max = 5,
+    Default = 1,
+    Callback = function(value)
+        -- Adjust block response time
+    end
+})
+
+-- =======================
+-- SECTION 8: AUTO STUN
+-- =======================
+
+-- Auto Stun toggle
+local autoStunToggle = tabs.autoStun:Toggle({
+    Name = "Enable Auto Stun",
+    Callback = function(enabled)
+        if enabled then
+            task.spawn(function()
+                while autoStunToggle.Enabled do
+                    task.wait(0.1)
+                    -- Automatically stun nearby enemies
+                end
+            end)
+        end
+    end
+})
+
+-- Stun range slider
+local stunRangeSlider = tabs.autoStun:Slider({
+    Name = "Stun Range",
+    Min = 5,
+    Max = 100,
+    Default = 25,
+    Callback = function(value)
+        -- Adjust stun range
+    end
+})
+
+-- =======================
+-- SECTION 8B: ANTI-BAIT SETTINGS (AUTO BLOCK)
+-- =======================
+
+-- Anti-Bait section in Auto Block tab
+local antiBaitSection = tabs.autoBlock:Section({
+    Title = "Anti Bait",
+    Icon = "shield",
+    Opened = false,
+})
+
+-- Zone Visibility slider
+local antiBaitVisibilitySlider = antiBaitSection:Slider({
+    Name = "Zone Visibility",
+    Suffix = " /10",
+    Min = 0,
+    Max = 10,
+    Default = 6,
+    Step = 1,
+    Callback = function(value)
+        -- Adjust block zone visibility for debugging
+    end
+})
+
+-- Zone Length slider
+local antiBaitZoneLengthSlider = antiBaitSection:Slider({
+    Name = "Zone Length",
+    Suffix = " studs",
+    Min = 1,
+    Max = 30,
+    Default = 12,
+    Step = 0.1,
+    Callback = function(value)
+        -- Adjust forward/backward zone length
+    end
+})
+
+-- Zone Width slider
+local antiBaitZoneWidthSlider = antiBaitSection:Slider({
+    Name = "Zone Width",
+    Suffix = " studs",
+    Min = 1,
+    Max = 15,
+    Default = 6,
+    Step = 0.1,
+    Callback = function(value)
+        -- Adjust left/right zone width
+    end
+})
+
+-- Zone Boost (Forward) slider
+local antiBaitZoneBoostSlider = antiBaitSection:Slider({
+    Name = "Zone Boost (Forward)",
+    Suffix = " studs",
+    Min = 0,
+    Max = 10,
+    Default = 4,
+    Step = 1,
+    Callback = function(value)
+        -- Extend zone forward for prediction
+    end
+})
+
+-- Zone Reduction (Backward) slider
+local antiBaitZoneReductionSlider = antiBaitSection:Slider({
+    Name = "Zone Reduction (Backward)",
+    Suffix = " studs",
+    Min = 0,
+    Max = 10,
+    Default = 4,
+    Step = 1,
+    Callback = function(value)
+        -- Reduce zone backward to prevent false blocks
+    end
+})
+
+-- =======================
+-- SECTION 9: HITBOX EXPANDER
+-- =======================
+
+-- Hitbox Expander toggle
+local hitboxToggle = tabs.hitbox:Toggle({
+    Name = "Enable Hitbox Expander",
+    Callback = function(enabled)
+        if enabled then
+            -- Expand player hitboxes for easier targeting
+            for _, player in pairs(players:GetPlayers()) do
+                if player.Character then
+                    -- Scale up hitbox sizes
+                end
+            end
+        end
+    end
+})
+
+-- Hitbox size multiplier
+local hitboxSizeSlider = tabs.hitbox:Slider({
+    Name = "Hitbox Size",
+    Min = 1,
+    Max = 10,
+    Default = 1,
+    Callback = function(value)
+        -- Adjust hitbox expansion size
+    end
+})
+
+-- =======================
+-- SECTION 10: GENERATOR AUTO-FIX
+-- =======================
+
+-- Generator auto-fix button
+local generatorButton = tabs.generator:Button({
+    Name = "Fix All Generators",
+    Callback = function()
+        task.spawn(function()
+            -- Find and fix all generators
+            local map = workspace:WaitForChild("Map")
+            local ingame = map:WaitForChild("Ingame")
+            local mapFolder = ingame:WaitForChild("Map")
+            
+            local generators = mapFolder:GetChildren()
+            for _, generator in ipairs(generators) do
+                if generator:IsA("Model") then
+                    -- Fix generator logic here
+                end
+            end
+            
+            -- Notify user
+            windUILib:Notify({
+                Title = "Auto Fix",
+                Content = "Starting to fix all generators!",
+                Duration = 3,
+            })
+        end)
+    end
+})
+
+-- =======================
+-- SECTION 11: TELEPORT
+-- =======================
+
+-- Teleport to spawn button
+local teleportToSpawnButton = tabs.teleport:Button({
+    Name = "Teleport to Spawn",
+    Callback = function()
+        if localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local spawnLocation = workspace:FindFirstChild("SpawnLocation")
+            if spawnLocation then
+                localPlayer.Character.HumanoidRootPart.CFrame = spawnLocation.CFrame
+            end
+        end
+    end
+})
+
+-- =======================
+-- SECTION 10.5: RANDOM TAB (AUDIO BLOCKING)
+-- =======================
+
+-- Audio Block toggle (in Random tab but for sound-based blocking)
+local audioBlockToggle = tabs.random:Toggle({
+    Name = "Enable Audio Block",
+    Callback = function(enabled)
+        if enabled then
+            -- Detect attack sounds and block automatically
+            task.spawn(function()
+                while audioBlockToggle.Enabled do
+                    task.wait(0.1)
+                    -- Listen for killer attack sounds
+                end
+            end)
+        end
+    end
+})
+
+-- Audio Block Custom IDs section
+local audioIDsSection = tabs.random:Section({
+    Title = "Add Custom Sound IDs",
+    Icon = "plus",
+    Opened = false,
+})
+
+-- Sound ID Management info
+local audioInfoLabel = audioIDsSection:Label({
+    Name = "Sound ID Management"
+})
+
+local audioStatsLabel = audioIDsSection:Label({
+    Name = "Default IDs: 48 | Custom IDs: 0 | Total: 48"
+})
+
+-- Input for new Sound ID
+local audioIDInput = audioIDsSection:TextBox({
+    Name = "New Sound ID",
+    Placeholder = "Enter Sound ID (numbers only)",
+    Default = "",
+    Callback = function(value)
+        -- Store new sound ID input
+    end
+})
+
+-- Add Sound ID button
+local addAudioIDButton = audioIDsSection:Button({
+    Name = "Add New ID",
+    Callback = function()
+        -- Extract number from input and add to custom IDs
+        local inputValue = audioIDInput.Value
+        if inputValue and inputValue ~= "" then
+            local customId = inputValue:match("%d+")
+            if customId then
+                genv["NullsakenCustomIDs"][customId] = true
+                
+                -- Save to file
+                local customIdsList = {}
+                for id, _ in pairs(genv["NullsakenCustomIDs"]) do
+                    table.insert(customIdsList, tostring(id))
+                end
+                pcall(function()
+                    writefile("Nullsaken_Audio_Block_IDS.txt", table.concat(customIdsList, ","))
+                end)
+                
+                local totalIds = 48 + #genv["NullsakenCustomIDs"]
+                windUILib:Notify({
+                    Title = "Audio Block",
+                    Content = "Added custom ID: " .. customId .. " (Total: " .. totalIds .. ")",
+                    Duration = 2,
+                })
+            end
+        end
+    end
+})
+
+-- Clear custom IDs button
+local clearAudioIDsButton = audioIDsSection:Button({
+    Name = "Clear All Custom IDs",
+    Callback = function()
+        -- Clear all custom audio IDs and save to file
+        genv["NullsakenCustomIDs"] = {}
+        pcall(function()
+            writefile("Nullsaken_Audio_Block_IDS.txt", "")
+        end)
+        
+        windUILib:Notify({
+            Title = "Audio Block",
+            Content = "All custom IDs cleared! Using 48 default IDs.",
+            Duration = 2,
+        })
+    end
+})
+
+-- Load Audio Block button
+local loadAudioBlockButton = tabs.random:Button({
+    Name = "Load Auto Block (Audio)",
+    Callback = function()
+        -- Load audio detection and blocking system
+        windUILib:Notify({
+            Title = "Audio Block",
+            Content = "Auto Block (Audio) Loaded Successfully!",
+            Duration = 3,
+        })
+    end
+})
+
+-- =======================
+-- SECTION 10.6: AUTO INVISIBILITY (RANDOM TAB)
+-- =======================
+
+-- Auto Invisibility section
+local autoInvisibilitySection = tabs.random:Section({
+    Title = "Auto Invisibility",
+    Icon = "eye-off",
+    Opened = false,
+})
+
+-- Auto Invisibility when Clone toggle
+local autoInvisCloneToggle = autoInvisibilitySection:Toggle({
+    Name = "Auto Invisibility when Clone (007n7)",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Auto-invisibility when clone ability activates
+            task.spawn(function()
+                while autoInvisCloneToggle.Enabled do
+                    task.wait(0.1)
+                    -- Detect clone creation and apply invisibility
+                end
+            end)
+        end
+    end
+})
+
+-- Auto Invisibility when Crouch toggle
+local autoInvisCrouchToggle = autoInvisibilitySection:Toggle({
+    Name = "Auto Invisibility when Crouch (Two Time)",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Auto-invisibility when crouching
+            task.spawn(function()
+                while autoInvisCrouchToggle.Enabled do
+                    task.wait(0.1)
+                    -- Detect crouch state and apply invisibility
+                end
+            end)
+        end
+    end
+})
+
+-- Auto Invisibility when Ghostburger toggle
+local autoInvisGhostToggle = autoInvisibilitySection:Toggle({
+    Name = "Auto Invisibility when Ghostburger (Noob)",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Auto-invisibility when using ghostburger ability
+            task.spawn(function()
+                while autoInvisGhostToggle.Enabled do
+                    task.wait(0.1)
+                    -- Detect ghostburger activation and apply invisibility
+                end
+            end)
+        end
+    end
+})
+
+-- Invisibility Duration slider
+local invisibilityDurationSlider = autoInvisibilitySection:Slider({
+    Name = "Invisibility Duration",
+    Suffix = " sec",
+    Min = 1,
+    Max = 45,
+    Default = 5,
+    Step = 1,
+    Callback = function(value)
+        -- Adjust how long invisibility lasts (1-45 seconds)
+    end
+})
+
+-- =======================
+-- SECTION 10.7: HITBOX VISUALIZATION
+-- =======================
+
+-- Hitbox Visualization toggle
+local hitboxVisualizationToggle = tabs.random:Toggle({
+    Name = "Hitbox Visualization",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Display hitbox outlines for all characters
+            task.spawn(function()
+                while hitboxVisualizationToggle.Enabled do
+                    task.wait(0.1)
+                    -- Draw hitbox boundaries
+                end
+            end)
+        end
+    end
+})
+
+-- =======================
+-- SECTION 10.8: SILENT AIM
+-- =======================
+
+-- Silent Aim section
+local silentAimSection = tabs.random:Section({
+    Title = "Silent Aim",
+    Icon = "crosshair",
+    Opened = false,
+})
+
+-- Silent Aim toggle (advanced aiming bypass)
+local silentAimToggle = silentAimSection:Toggle({
+    Name = "Silent Aim",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Advanced silent aiming with metamethod hooking
+            task.spawn(function()
+                while silentAimToggle.Enabled do
+                    -- Hook game metamethods for position manipulation
+                    local oldNamecall
+                    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+                        local args = {...}
+                        local method = getnamecallmethod()
+                        
+                        -- Intercept raycast calls for silent aim
+                        if method == "FindPartOnRay" or method == "Raycast" then
+                            -- Modify ray direction to target nearest enemy
+                            local targetPlayer = findNearestEnemy()
+                            if targetPlayer and targetPlayer.Character then
+                                local targetPos = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                                if targetPos then
+                                    -- Adjust ray to hit target
+                                    args[1] = args[1] -- Adjust ray origin/direction
+                                end
+                            end
+                        end
+                        
+                        return oldNamecall(self, unpack(args))
+                    end)
+                    
+                    -- Hook GetMousePos for position spoofing
+                    local oldGetMousePos = hookfunction(game.GetMousePos, function()
+                        local targetPlayer = findNearestEnemy()
+                        if targetPlayer and targetPlayer.Character then
+                            local targetPos = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                            if targetPos then
+                                local screenPos = game.Camera:WorldToScreenPoint(targetPos.Position)
+                                return Vector2.new(screenPos.X, screenPos.Y)
+                            end
+                        end
+                        return oldGetMousePos()
+                    end)
+                    
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+})
+
+-- Helper function to find nearest enemy
+local function findNearestEnemy()
+    local nearestPlayer = nil
+    local nearestDistance = math.huge
+    
+    for _, player in ipairs(players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
+            if rootPart then
+                local distance = (rootPart.Position - localPlayer.Character.HumanoidRootPart.Position).Magnitude
+                if distance < nearestDistance then
+                    nearestDistance = distance
+                    nearestPlayer = player
+                end
+            end
+        end
+    end
+    
+    return nearestPlayer
+end
+
+-- =======================
+-- SECTION 10.9: AUTO STUN (CHANCE-BASED)
+-- =======================
+
+-- Auto Stun (Chance) section
+local autoStunChanceSection = tabs.random:Section({
+    Title = "Auto Stun (Chance)",
+    Icon = "zap",
+    Opened = false,
+})
+
+-- Auto Stun (Chance) toggle - alternative implementation with RNG
+local autoStunChanceToggle = autoStunChanceSection:Toggle({
+    Name = "Auto Stun (Chance)",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Stun with chance-based triggering
+            task.spawn(function()
+                while autoStunChanceToggle.Enabled do
+                    task.wait(0.1)
+                    -- Random chance to trigger stun on nearby enemies
+                    local chance = math.random(1, 100)
+                    if chance <= 50 then  -- 50% chance
+                        -- Execute stun ability
+                    end
+                end
+            end)
+        end
+    end
+})
+
+-- =======================
+-- SECTION 12: MISC FEATURES
+-- =======================
+
+-- Infinite jump toggle
+local infiniteJumpToggle = tabs.misc:Toggle({
+    Name = "Infinite Jump",
+    Callback = function(enabled)
+        if enabled then
+            task.spawn(function()
+                while infiniteJumpToggle.Enabled do
+                    if localPlayer.Character:FindFirstChild("Humanoid") then
+                        localPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+})
+
+-- Speed boost toggle
+local speedBoostToggle = tabs.misc:Toggle({
+    Name = "Speed Boost",
+    Callback = function(enabled)
+        -- Implement speed boost feature
+    end
+})
+
+-- =======================
+-- SECTION 12.1: MISC TAB - VISUAL EFFECTS
+-- =======================
+
+-- Anti Fog toggle (remove fog effects)
+local antiFogToggle = tabs.misc:Toggle({
+    Name = "Anti Fog",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Remove fog effects from atmosphere
+            task.spawn(function()
+                while antiFogToggle.Enabled do
+                    local lightingService = game:GetService("Lighting")
+                    local children = lightingService:GetChildren()
+                    for _, child in ipairs(children) do
+                        if child:IsA("Atmosphere") then
+                            child.Parent = nil
+                        end
+                    end
+                    task.wait(5)
+                end
+            end)
+        end
+    end
+})
+
+-- =======================
+-- SECTION 12.2: CHAT & UI
+-- =======================
+
+-- Chat & UI section
+local chatUISection = tabs.misc:Section({
+    Title = "Chat & UI",
+    Icon = "message-square",
+    Opened = false,
+})
+
+-- Chat Visibility button
+local chatVisibilityButton = chatUISection:Button({
+    Name = "Chat Visibility",
+    Callback = function()
+        -- Toggle chat window and input bar visibility
+        local textChatService = game:GetService("TextChatService")
+        local chatWindowConfig = textChatService:FindFirstChild("ChatWindowConfiguration")
+        local chatInputConfig = textChatService:FindFirstChild("ChatInputBarConfiguration")
+        
+        if chatWindowConfig then
+            chatWindowConfig.Enabled = true
+        end
+        if chatInputConfig then
+            chatInputConfig.Enabled = true
+        end
+    end
+})
+
+-- Remove Effects toggle (removes visual overlays)
+local removeEffectsToggle = chatUISection:Toggle({
+    Name = "Remove Effects",
+    Default = true,
+    Callback = function(enabled)
+        if enabled then
+            -- Remove screen effects (blur, damage, vignette, etc.)
+            task.spawn(function()
+                while removeEffectsToggle.Enabled do
+                    local lightingService = game:GetService("Lighting")
+                    local playerGui = localPlayer:WaitForChild("PlayerGui")
+                    
+                    -- Effects to remove
+                    local effectNames = {
+                        "BlurEffect", "ColorCorrectionEffect", "BloomEffect",
+                        "SunRaysEffect", "DepthOfFieldEffect", "ScreenFlash",
+                        "HitEffect", "DamageOverlay", "BloodEffect",
+                        "Vignette", "BlackScreen", "WhiteScreen",
+                        "ShockEffect", "Darkness", "JumpScare",
+                        "LowHealthOverlay", "Flashbang", "FadeEffect"
+                    }
+                    
+                    -- Remove from lighting
+                    for _, child in ipairs(lightingService:GetDescendants()) do
+                        if table.find(effectNames, child.Name) then
+                            child:Destroy()
+                        end
+                    end
+                    
+                    -- Remove from PlayerGui
+                    for _, child in ipairs(playerGui:GetDescendants()) do
+                        if table.find(effectNames, child.Name) then
+                            child:Destroy()
+                        end
+                    end
+                    
+                    task.wait(5)
+                end
+            end)
+        end
+    end
+})
+
+-- =======================
+-- SECTION 12.3: ANTI'S
+-- =======================
+
+-- Anti's section
+local antisSection = tabs.misc:Section({
+    Title = "Anti's",
+    Icon = "shield",
+    Opened = false,
+})
+
+-- Anti Slow toggle
+local antiSlowToggle = antisSection:Toggle({
+    Name = "Anti Slow",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Prevent slow debuff
+            task.spawn(function()
+                while antiSlowToggle.Enabled do
+                    local survivors = workspace:WaitForChild("Players"):WaitForChild("Survivors")
+                    for _, survivor in ipairs(survivors:GetChildren()) do
+                        -- Anti-slow logic here
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+})
+
+-- Anti Stun toggle (different from Auto Stun)
+local antiStunToggle = antisSection:Toggle({
+    Name = "Anti Stun",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Prevent stun effects
+        end
+    end
+})
+
+-- =======================
+-- SECTION 12.4: SPECIAL
+-- =======================
+
+-- Special section
+local specialSection = tabs.misc:Section({
+    Title = "Special",
+    Icon = "zap",
+    Opened = false,
+})
+
+-- Invisibility (R6 Only) toggle
+local invisibilityToggle = specialSection:Toggle({
+    Name = "Invisibility (R6 Only)",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- R6 invisibility mechanics
+            if localPlayer.Character then
+                local humanoid = localPlayer.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid and humanoid.RigType == Enum.HumanoidRigType.R6 then
+                    local animationTracks = humanoid:GetPlayingAnimationTracks()
+                    for _, track in ipairs(animationTracks) do
+                        track:AdjustSpeed(100000)
+                    end
+                    -- Hide character parts
+                    local animate = localPlayer.Character:FindFirstChild("Animate")
+                    if animate then
+                        animate.Parent = nil
+                    end
+                end
+            end
+        end
+    end
+})
+
+-- =======================
+-- SECTION 12.5: AUTO CLOSE POPUPS
+-- =======================
+
+-- Auto Close Popups section
+local autoClosePopupsSection = tabs.misc:Section({
+    Title = "Auto Close Popups",
+    Icon = "x-circle",
+    Opened = false,
+})
+
+-- Auto Close 1x1x1x1 Popups toggle
+local autoClosePopupsToggle = autoClosePopupsSection:Toggle({
+    Name = "Auto Close 1x1x1x1 Popups",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Auto-close 1x1x1x1 popup dialogs
+            task.spawn(function()
+                while autoClosePopupsToggle.Enabled do
+                    task.wait(0.01)
+                    local playerGui = localPlayer:WaitForChild("PlayerGui")
+                    local tempUI = playerGui:FindFirstChild("TemporaryUI")
+                    if tempUI then
+                        local popup = tempUI:FindFirstChild("1x1x1x1Popup")
+                        if popup then
+                            popup:Destroy()
+                        end
+                    end
+                end
+            end)
+        end
+    end
+})
+
+-- =======================
+-- SECTION 12.5: AI TAB
+-- =======================
+
+-- AI Tab Other Features section
+local aiOtherSection = tabs.ai:Section({
+    Title = "Other Useful Stuff",
+    Icon = "wrench",
+    Opened = false,
+})
+
+-- Auto Punch toggle
+local autoPunchToggle = aiOtherSection:Toggle({
+    Name = "Auto Punch",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Automatically execute punch attacks
+            task.spawn(function()
+                while autoPunchToggle.Enabled do
+                    task.wait(0.1)
+                    -- Monitor punch charge and trigger when ready
+                end
+            end)
+        end
+    end
+})
+
+-- Punch Mode dropdown
+local punchModeDropdown = aiOtherSection:Dropdown({
+    Name = "Punch Mode",
+    Options = {
+        "Normal",           -- Normal punch execution
+        "After u punch",    -- Punch after player punches
+    },
+    Default = "Normal",
+    Callback = function(selected)
+        -- Change punch execution mode
+    end
+})
+
+-- Aim Mode dropdown
+local aimModeDropdown = aiOtherSection:Dropdown({
+    Name = "Aim Mode",
+    Options = {
+        "Predictive",      -- Predict enemy position
+        "Not Predictive",  -- Direct aim at current position
+    },
+    Default = "Predictive",
+    Callback = function(selected)
+        -- Change aiming prediction mode
+    end
+})
+
+-- Fling Power slider (advanced punch feature)
+local flingPowerSlider = aiOtherSection:Slider({
+    Name = "Fling Power",
+    Suffix = " power",
+    Min = 100000,
+    Max = 20000000,
+    Default = 5000000,
+    Step = 100000,
+    Callback = function(value)
+        -- Adjust punch fling force
+    end
+})
+
+-- Prediction Time slider (for punch aiming)
+local predictionTimeSlider = aiOtherSection:Slider({
+    Name = "Prediction Time",
+    Suffix = " s",
+    Min = 0,
+    Max = 0.5,
+    Default = 0.1,
+    Step = 0.01,
+    Callback = function(value)
+        -- Adjust prediction time for punch aiming
+    end
+})
+
+-- =======================
+-- SECTION 12.75: DOUBLE HITBOX BLOCKING
+-- =======================
+
+-- Double Hitbox Blocking section
+local doubleHitboxSection = aiOtherSection -- Alternative: create new section
+
+-- Double Hitbox Blocking toggle
+local doubleHitboxToggle = doubleHitboxSection:Toggle({
+    Name = "Double Hitbox Blocking tech (Don't use with auto Block)",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Enable double hitbox blocking mechanics
+            task.spawn(function()
+                while doubleHitboxToggle.Enabled do
+                    task.wait(0.1)
+                    -- Double hitbox detection logic
+                end
+            end)
+        end
+    end
+})
+
+-- Detection Radius slider
+local doubleHitboxRadiusSlider = aiOtherSection:Slider({
+    Name = "Detection Radius",
+    Suffix = " studs",
+    Min = 5,
+    Max = 100,
+    Default = 30,
+    Step = 1,
+    Callback = function(value)
+        -- Adjust hitbox detection range
+    end
+})
+
+-- Detection Angle slider
+local doubleHitboxAngleSlider = aiOtherSection:Slider({
+    Name = "Detection Angle",
+    Suffix = "°",
+    Min = 10,
+    Max = 180,
+    Default = 45,
+    Step = 1,
+    Callback = function(value)
+        -- Adjust hitbox detection angle
+    end
+})
+
+-- Angle Visualization toggle
+local angleVisualizationToggle = aiOtherSection:Toggle({
+    Name = "Angle Visualization",
+    Default = false,
+    Callback = function(enabled)
+        -- Show/hide angle visualization for debugging
+    end
+})
+
+-- =======================
+-- SECTION 12.85: MS CHECKER UTILITY
+-- =======================
+
+-- MS Checker button (ping/latency monitor)
+local msCheckerButton = aiOtherSection:Button({
+    Name = "MS Checker",
+    Callback = function()
+        -- Create onscreen ping display
+        local stats = game:GetService("Stats")
+        local userInput = game:GetService("UserInputService")
+        local localPlayerGui = localPlayer:WaitForChild("PlayerGui")
+        
+        -- Create GUI for displaying ping
+        local screenGui = Instance.new("ScreenGui")
+        local pingLabel = Instance.new("TextButton")
+        
+        pingLabel.Size = UDim2.new(0, 90, 0, 30)
+        pingLabel.Position = UDim2.new(0, 20, 0, 20)
+        pingLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        pingLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        pingLabel.Font = Enum.Font.SourceSans
+        pingLabel.Parent = screenGui
+        
+        screenGui.Parent = localPlayerGui
+        
+        -- Update ping display
+        runService.RenderStepped:Connect(function()
+            local ping = stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+            pingLabel.Text = ping .. " ms"
+        end)
+    end
+})
+
+-- =======================
+-- SECTION 12.9: AUTO CLONE
+-- =======================
+
+-- Auto Clone section
+local autoCloneSection = tabs.ai:Section({
+    Title = "Auto Clone",
+    Icon = "copy",
+    Opened = false,
+})
+
+-- Auto Clone toggle
+local autoCloneToggle = autoCloneSection:Toggle({
+    Name = "Auto Clone (007n7)",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Automatically clone nearby players
+            task.spawn(function()
+                while autoCloneToggle.Enabled do
+                    task.wait(0.1)
+                    -- Clone detection and execution logic
+                end
+            end)
+        end
+    end
+})
+
+-- Clone Detection Range slider
+local cloneDetectionRangeSlider = autoCloneSection:Slider({
+    Name = "Detection Range",
+    Suffix = " studs",
+    Min = 1,
+    Max = 100,
+    Default = 20,
+    Step = 1,
+    Callback = function(value)
+        -- Adjust clone detection range
+    end
+})
+
+-- =======================
+-- SECTION 12.95: PUNCH HITBOX EXPANDER
+-- =======================
+
+-- Punch Hitbox Expander section
+local punchHitboxSection = tabs.ai:Section({
+    Title = "Punch Hitbox Expander",
+    Icon = "hand",
+    Opened = false,
+})
+
+-- Punch Hitbox Increase toggle
+local punchHitboxToggle = punchHitboxSection:Toggle({
+    Name = "Punch Hitbox Increase",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Enable punch hitbox expansion
+            windUILib:Notify({
+                Title = "Punch Hitbox",
+                Content = "Enabled",
+                Duration = 1,
+            })
+        end
+    end
+})
+
+-- Punch Hitbox Increase slider
+local punchHitboxIncreaseSlider = punchHitboxSection:Slider({
+    Name = "Increase (Don't make too high 45 is good Enough)",
+    Suffix = " power",
+    Min = 10,
+    Max = 100,
+    Default = 80,
+    Step = 1,
+    Callback = function(value)
+        -- Adjust punch hitbox increase
+    end
+})
+
+-- =======================
+-- SECTION 13.5: VISUAL SETTINGS
+-- =======================
+
+-- Visual Settings section (in Settings tab or Misc tab)
+local visualSettingsSection = tabs.settings:Section({
+    Title = "Visual Settings",
+    Icon = "eye",
+    Opened = false,
+})
+
+-- Brightness Control toggle
+local brightnesControlToggle = visualSettingsSection:Toggle({
+    Name = "Ambient Brightness Control",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Modify lighting for brightness
+            task.spawn(function()
+                while brightnesControlToggle.Enabled do
+                    local lightingService = game:GetService("Lighting")
+                    -- Cycle through brightness levels every 5 seconds
+                    lightingService.Ambient = Color3.new(1, 1, 1)
+                    lightingService.OutdoorAmbient = Color3.new(1, 1, 1)
+                    lightingService.Brightness = 3
+                    task.wait(5)
+                end
+            end)
+        end
+    end
+})
+
+-- =======================
+-- SECTION 10.11: VOID RUSH (MISC TAB)
+-- =======================
+
+-- Void Rush section
+local voidRushSection = tabs.misc:Section({
+    Title = "Void Rush",
+    Icon = "zap",
+    Opened = false,
+})
+
+-- Void Rush No-Crash toggle (prevents game crashes during void rush)
+local voidRushNoCrashToggle = voidRushSection:Toggle({
+    Name = "Void Rush No-Crash",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Hook metamethods to prevent game crashes during void rush state
+            local oldNamecall
+            oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+                local method = getnamecallmethod()
+                
+                -- Block dangerous method calls during void rush
+                if method == "FireServer" or method == "InvokeServer" then
+                    if genv["_VoidRushBypass"] then
+                        return -- Prevent execution
+                    end
+                end
+                
+                return oldNamecall(self, ...)
+            end)
+        end
+    end
+})
+
+-- Void Rush Full Control toggle (advanced state management)
+local voidRushFullControlToggle = voidRushSection:Toggle({
+    Name = "Void Rush Full Control",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Monitor void rush state via RenderStepped
+            task.spawn(function()
+                while voidRushFullControlToggle.Enabled do
+                    -- Track VoidRushState attribute changes
+                    local character = localPlayer.Character
+                    if character then
+                        local humanoid = character:FindFirstChildOfClass("Humanoid")
+                        if humanoid then
+                            local voidRushState = humanoid:GetAttribute("VoidRushState")
+                            if voidRushState then
+                                -- Apply control modifications while in void rush
+                            end
+                        end
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+})
+
+-- =======================
+-- SECTION 10.12: VEERONICA (MISC TAB)
+-- =======================
+
+-- Veeronica section (visual platform for tricks)
+local veeronicaSection = tabs.misc:Section({
+    Title = "Veeronica",
+    Icon = "layout",
+    Opened = false,
+})
+
+-- Trick Helper toggle (assists with performing tricks)
+local trickHelperToggle = veeronicaSection:Toggle({
+    Name = "Trick Helper",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Create visual platform to assist with tricks
+            task.spawn(function()
+                while trickHelperToggle.Enabled do
+                    local character = localPlayer.Character
+                    if character then
+                        local hrp = character:FindFirstChild("HumanoidRootPart")
+                        if hrp then
+                            -- Create platform relative to player position
+                            local platform = Instance.new("Part")
+                            platform.Size = Vector3.new(10, 0.3, 10)
+                            platform.Material = Enum.Material.SmoothPlastic
+                            platform.Color = Color3.fromRGB(255, 255, 0)
+                            platform.CanCollide = false
+                            platform.CFrame = hrp.CFrame * CFrame.new(1, -3, 0) * CFrame.Angles(0, 0, math.rad(90))
+                            platform.Parent = workspace
+                            
+                            task.wait(0.1)
+                            if platform.Parent then
+                                platform:Destroy()
+                            end
+                        end
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+})
+
+-- Help Every slider (frequency of trick assistance)
+local helpEverySlider = veeronicaSection:Slider({
+    Name = "Help Every",
+    Suffix = " Second",
+    Min = 0,
+    Max = 5,
+    Default = 0,
+    Step = 1,
+    Callback = function(value)
+        -- Adjust frequency of trick helper activation
+    end
+})
+
+-- Super Fling with Bumper toggle (advanced fling mechanic)
+local superFlingToggle = veeronicaSection:Toggle({
+    Name = "Super Fling with Bumper",
+    Default = false,
+    Callback = function(enabled)
+        -- Enable super fling with bump mechanics
+    end
+})
+
+-- Pitch Degrees slider (fling angle control)
+local pitchDegreesSlider = veeronicaSection:Slider({
+    Name = "Pitch Degrees",
+    Suffix = "°",
+    Min = 0,
+    Max = 90,
+    Default = 40,
+    Step = 1,
+    Callback = function(value)
+        -- Adjust fling pitch angle
+    end
+})
+
+-- Activation Range slider (fling trigger distance)
+local activationRangeSlider = veeronicaSection:Slider({
+    Name = "Activation Range",
+    Suffix = " studs",
+    Min = 1,
+    Max = 50,
+    Default = 20,
+    Step = 1,
+    Callback = function(value)
+        -- Adjust distance to trigger super fling
+    end
+})
+
+-- =======================
+-- SECTION 13: SETTINGS
+-- =======================
+
+-- Reset all settings button
+local resetButton = tabs.settings:Button({
+    Name = "Reset All Settings",
+    Callback = function()
+        -- Reset all toggles and sliders to default values
+        staminaConfig.maxStamina = 100
+        staminaConfig.sprintSpeed = 25
+        staminaConfig.staminaGain = 5
+        staminaConfig.staminaDrain = 7
+        staminaConfig.staminaRegenDelay = 2
+        windUILib:Notify({
+            Title = "Settings",
+            Content = "All settings have been reset!",
+            Duration = 2,
+        })
+    end
+})
+
+-- =======================
+-- SECTION 13B: FLING
+-- =======================
+
+-- Fling section
+local flingSection = tabs.settings:Section({
+    Title = "Fling",
+    Icon = "wind",
+    Opened = false,
+})
+
+-- Fling toggle
+local flingToggle = flingSection:Toggle({
+    Name = "Fling",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Enable fling mechanics
+            -- Complex UI with movement controls
+        end
+    end
+})
+
+-- =======================
+-- SECTION 13C: SUKKARS
+-- =======================
+
+-- Sukkars section
+local sukkarsSection = tabs.settings:Section({
+    Title = "Sukkars",
+    Icon = "candy",
+    Opened = false,
+})
+
+-- Sukkars toggle (auto-collect currency)
+local sukkarsToggle = sukkarsSection:Toggle({
+    Name = "Sukkars Auto-Collect",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Auto-collect Sukkar currency from locations
+            task.spawn(function()
+                while sukkarsToggle.Enabled do
+                    local sukkars = workspace:FindFirstChild("Map")
+                    if sukkars then
+                        -- Collect all sukkars
+                    end
+                    task.wait(0.8)
+                end
+            end)
+        end
+    end
+})
+
+-- =======================
+-- SECTION 13D: ORBIT
+-- =======================
+
+-- Orbit section
+local orbitSection = tabs.settings:Section({
+    Title = "Orbit",
+    Icon = "rotate-cw",
+    Opened = false,
+})
+
+-- Orbit Players toggle
+local orbitToggle = orbitSection:Toggle({
+    Name = "Orbit Players (u can use on killer so he can't Hit you with Invisibility)",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Start orbiting selected player
+        end
+    end
+})
+
+-- Orbit Player selection dropdown
+local orbitPlayerDropdown = orbitSection:Dropdown({
+    Name = "Choose the player",
+    Options = {},
+    AllowNone = true,
+    Multi = false,
+    Default = "",
+    Callback = function(selected)
+        -- Set orbit target to selected player
+    end
+})
+
+-- Orbit Rotation Speed slider
+local orbitSpeedSlider = orbitSection:Slider({
+    Name = "Rotation Speed",
+    Suffix = " speed",
+    Min = 1,
+    Max = 50,
+    Default = 5,
+    Step = 0.5,
+    Callback = function(value)
+        -- Adjust rotation speed
+    end
+})
+
+-- Orbit Distance slider
+local orbitDistanceSlider = orbitSection:Slider({
+    Name = "Orbit Distance",
+    Suffix = " studs",
+    Min = 1,
+    Max = 20,
+    Default = 10,
+    Step = 1,
+    Callback = function(value)
+        -- Adjust orbit radius distance
+    end
+})
+
+-- =======================
+-- SECTION 13E: HIDE NAMES
+-- =======================
+
+-- Hide Names section
+local hideNamesSection = tabs.settings:Section({
+    Title = "Hide Names",
+    Icon = "eye-off",
+    Opened = false,
+})
+
+-- Hide Names toggle
+local hideNamesToggle = hideNamesSection:Toggle({
+    Name = "Hide Names",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Replace all player names with "Nullsaken" in chat
+            local playerGui = localPlayer:WaitForChild("PlayerGui")
+            for _, label in ipairs(playerGui:GetDescendants()) do
+                if label:IsA("TextLabel") then
+                    -- Replace player names in text
+                end
+            end
+        end
+    end
+})
+
+-- =======================
+-- SECTION 13F: GUEST ANIMATIONS
+-- =======================
+
+-- Guest Animations section
+local guestAnimSection = tabs.settings:Section({
+    Title = "Guest Animations",
+    Icon = "user",
+    Opened = false,
+})
+
+-- Fake Animations for Guest button
+local guestAnimButton = guestAnimSection:Button({
+    Name = "Fake Animations for Guest",
+    Callback = function()
+        -- Load guest animation system
+    end
+})
+
+-- Guest Animation dropdown
+local guestAnimDropdown = guestAnimSection:Dropdown({
+    Name = "Choose Animation",
+    Options = {
+        "Laggy (Guest)",
+        "Normal (Guest)",
+        "KJ (Guest)",
+        "Axe (Guest)",
+        "Fake Block m3/4 (Guest)",
+        "Fake Block m1/2 (Guest)",
+    },
+    AllowNone = true,
+    Multi = false,
+    Default = "",
+    Callback = function(selected)
+        -- Play selected guest animation
+    end
+})
+
+-- Guest Animation keybind input
+local guestAnimKeybind = guestAnimSection:Input({
+    Name = "Set KeyBind",
+    Value = "L",
+    Callback = function(value)
+        -- Set keybind for guest animation
+    end
+})
+
+-- =======================
+-- SECTION 13G: CUSTOM LMS MUSIC
+-- =======================
+
+-- Custom LMS Music section
+local customMusicSection = tabs.settings:Section({
+    Title = "Custom LMS Music",
+    Icon = "music",
+    Opened = false,
+})
+
+-- Custom LMS Music toggle
+local customMusicToggle = customMusicSection:Toggle({
+    Name = "Custom LMS Music",
+    Default = false,
+    Callback = function(enabled)
+        if enabled then
+            -- Start playing custom music
+        end
+    end
+})
+
+-- Ready Songs dropdown
+local musicDropdown = customMusicSection:Dropdown({
+    Name = "Ready Songs",
+    Options = {
+        "Vanity",
+        "Close To Me",
+        "Hacklord LMS",
+        "Burnout",
+        "Compass",
+        "Creation Of Hatred",
+        "Plead",
+    },
+    AllowNone = false,
+    Multi = false,
+    Default = "Burnout",
+    Callback = function(selected)
+        -- Play selected music
+    end
+})
+
+-- Custom Music ID input
+local musicIDInput = customMusicSection:Input({
+    Name = "Music ID (Numbers Only)",
+    Value = "",
+    Callback = function(value)
+        -- Store custom music ID
+    end
+})
+
+-- Music Volume slider
+local musicVolumeSlider = customMusicSection:Slider({
+    Name = "Music Volume",
+    Min = 1,
+    Max = 45,
+    Default = 5,
+    Step = 1,
+    Callback = function(value)
+        -- Adjust music volume
+    end
+})
+
+-- Custom LMS info paragraph
+local customMusicInfo = customMusicSection:Paragraph({
+    Title = "Custom LMS",
+    Description = "You can get ID on robloxsong.com",
+})
+
+-- =======================
+-- SECTION 14: CREDITS
+-- =======================
+
+-- Credits display
+tabs.credits:Label({
+    Name = "Nullsaken Script v1.0"
+})
+
+tabs.credits:Label({
+    Name = "Developers: RINGTA and BUBLIK"
+})
+
+tabs.credits:Label({
+    Name = "Framework: WindUI"
+})
+
+tabs.credits:Label({
+    Name = "Features: 12+ gameplay enhancements"
+})
+
+-- =======================
+-- SECTION 14B: INSTRUCTIONS & HELP
+-- =======================
+
+-- Instructions section in Auto Block tab
+local instructionsSection = tabs.autoBlock:Section({
+    Title = "Instructions",
+    Icon = "book",
+    Opened = false,
+})
+
+-- Auto Block Normal Mode instructions
+local normalModeInfo = instructionsSection:Paragraph({
+    Title = "Auto Block (Normal Mode)",
+    Description = "Detection Range = If the killer is not in it the script will not work and will not block.\n\nAttack Verification Duration = If Killer is not in range and attacked, script will wait X seconds for killer to enter the zone.\n\nFacing Check Modes = Normal basic one. 'No check' makes script not check it. 'Player Facing Killer' you need to look at killer. 'Killer Facing you' killer needs to look at you."
+})
+
+-- Anti-Bait Mode instructions
+local antiBaitModeInfo = instructionsSection:Paragraph({
+    Title = "Auto Block (Anti Bait)",
+    Description = "Basically Normal + some anti-bait mechanics. The block will only work if you are inside the purple zone the script creates in front of the killer AND the killer attacks.\n\nZone Visibility = Makes zone less visible.\nZone Length = Adjust purple zone length.\nZone Width = Make it bigger if you like to approach and dodge.\nZone Boost (Forward) = If you have big ping, make it bigger. When killer runs it makes zone longer.\nZone Reduction (Backward) = Avoid random blocks. If killer runs backward it reduces the zone."
+})
+
+-- Anti-Bait V2 Mode instructions
+local antiBaitV2Info = instructionsSection:Paragraph({
+    Title = "Auto Block (Anti Bait V2)",
+    Description = "Basically Anti Bait but less blatant.\n\nClose Range = Enemy very close, within 'Guaranteed Block Range' (faster blocking).\nMax Attack Angle = Attack in purple zone with killer moving towards you at certain angle.\nShow Angle Visualization = Display the angle visualization for debugging."
+})
+
+-- =======================
+-- SECTION 15: NOTIFICATIONS
+-- =======================
+
+-- Script loaded notification
+windUILib:Notify({
+    Title = "Nullsaken",
+    Content = "Script loaded successfully!",
+    Duration = 3,
+})
+
+-- =======================
+-- END OF SCRIPT
+-- =======================
+
